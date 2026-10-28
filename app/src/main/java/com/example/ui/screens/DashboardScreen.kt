@@ -426,7 +426,7 @@ private fun HeaderSection(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "SULTAN BLOCK",
+                    text = "CERTAIN AHMAD",
                     style = MaterialTheme.typography.headlineSmall.copy(
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.2.sp
