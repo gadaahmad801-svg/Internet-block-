@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">SULTAN BLOCK</string>
+    <string name="certain_lock_accessibility_description">Enables Certain Lock in SULTAN BLOCK to detect launch of selected restricted applications and immediately return to the home screen.</string>
 </resources>

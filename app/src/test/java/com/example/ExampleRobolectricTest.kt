@@ -3,6 +3,9 @@ package com.example
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.audio.VolumeStateManager
+import com.example.certainlock.CertainLockManager
+import com.example.schedule.ScheduleItem
+import com.example.timer.TimerState
 import com.example.vpn.VpnStateManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -11,6 +14,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.util.Calendar
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -55,5 +59,53 @@ class ExampleRobolectricTest {
 
         VolumeStateManager.incrementSuppression()
         assertEquals(1L, VolumeStateManager.suppressionCount.value)
+    }
+
+    @Test
+    fun testCertainLockManager() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        CertainLockManager.updateActiveState(false)
+        assertFalse(CertainLockManager.isLockActive.value)
+
+        CertainLockManager.setLockedPackages(setOf("com.instagram.android", "com.openai.chatgpt"))
+        assertTrue(CertainLockManager.lockedPackages.value.contains("com.instagram.android"))
+
+        // When inactive, should not redirect
+        assertFalse(CertainLockManager.shouldRedirect("com.instagram.android", context))
+
+        // When active, should redirect locked package
+        CertainLockManager.updateActiveState(true)
+        assertTrue(CertainLockManager.shouldRedirect("com.instagram.android", context))
+
+        // Should not redirect unlocked package
+        assertFalse(CertainLockManager.shouldRedirect("com.android.chrome", context))
+    }
+
+    @Test
+    fun testScheduleItemFormatting() {
+        val schedule = ScheduleItem(
+            title = "Sleep Focus",
+            startHour = 23,
+            startMinute = 30,
+            endHour = 7,
+            endMinute = 0,
+            daysOfWeek = setOf(Calendar.MONDAY, Calendar.TUESDAY, Calendar.WEDNESDAY, Calendar.THURSDAY, Calendar.FRIDAY)
+        )
+        assertEquals("23:30", schedule.formatStartTime())
+        assertEquals("07:00", schedule.formatEndTime())
+        assertEquals("Weekdays", schedule.formatDays())
+    }
+
+    @Test
+    fun testTimerState() {
+        val now = System.currentTimeMillis()
+        val timer = TimerState(
+            isActive = true,
+            durationMinutes = 60,
+            startTimestamp = now,
+            endTimestamp = now + (60 * 60 * 1000)
+        )
+        assertTrue(timer.remainingMillis() > 0)
+        assertTrue(timer.formatRemaining().contains(":"))
     }
 }

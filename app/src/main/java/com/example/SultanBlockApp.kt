@@ -10,6 +10,8 @@ class SultanBlockApp : Application() {
     companion object {
         const val VPN_CHANNEL_ID = "sultan_block_vpn_channel"
         const val VOLUME_CHANNEL_ID = "sultan_block_volume_channel"
+        const val CERTAIN_LOCK_CHANNEL_ID = "sultan_block_certain_lock_channel"
+        const val SCHEDULE_TIMER_CHANNEL_ID = "sultan_block_schedule_timer_channel"
         lateinit var instance: SultanBlockApp
             private set
     }
@@ -42,8 +44,28 @@ class SultanBlockApp : Application() {
                 setShowBadge(false)
             }
 
+            val certainLockChannel = NotificationChannel(
+                CERTAIN_LOCK_CHANNEL_ID,
+                "SULTAN BLOCK - Certain Lock",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Monitors foreground apps to return restricted apps to home"
+                setShowBadge(false)
+            }
+
+            val scheduleTimerChannel = NotificationChannel(
+                SCHEDULE_TIMER_CHANNEL_ID,
+                "SULTAN BLOCK - Schedule & Timer",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alerts when timers or schedules start and expire"
+                setShowBadge(true)
+            }
+
             notificationManager?.createNotificationChannel(vpnChannel)
             notificationManager?.createNotificationChannel(volumeChannel)
+            notificationManager?.createNotificationChannel(certainLockChannel)
+            notificationManager?.createNotificationChannel(scheduleTimerChannel)
         }
     }
 }

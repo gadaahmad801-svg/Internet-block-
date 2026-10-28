@@ -12,6 +12,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.data.SettingsRepository
 import com.example.network.NetworkInfoManager
+import com.example.pin.PinManager
+import com.example.schedule.ScheduleManager
+import com.example.timer.TimerManager
 import com.example.ui.MainViewModel
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.theme.SultanBlockTheme
@@ -23,9 +26,20 @@ class MainActivity : ComponentActivity() {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                val networkInfoManager = NetworkInfoManager(applicationContext)
-                val settingsRepo = SettingsRepository(applicationContext)
-                return MainViewModel(networkInfoManager, settingsRepo) as T
+                val context = applicationContext
+                val settingsRepo = SettingsRepository(context)
+                val networkInfoManager = NetworkInfoManager(context)
+                val scheduleManager = ScheduleManager(context, settingsRepo)
+                val timerManager = TimerManager(context, settingsRepo)
+                val pinManager = PinManager(settingsRepo)
+
+                return MainViewModel(
+                    networkInfoManager = networkInfoManager,
+                    settingsRepository = settingsRepo,
+                    scheduleManager = scheduleManager,
+                    timerManager = timerManager,
+                    pinManager = pinManager
+                ) as T
             }
         }
     }
@@ -48,5 +62,6 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.checkAllPermissions(this)
+        viewModel.loadApps(this)
     }
 }

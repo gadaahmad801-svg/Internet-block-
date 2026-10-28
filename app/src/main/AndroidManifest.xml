@@ -16,8 +16,26 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Boot Completion -->
+    <!-- Boot Completion & Wake Lock -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Alarm Scheduling Permissions -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- App Usage Stats for Certain Lock detection fallback -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- Query launchable packages dynamically in Android 11+ -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:name=".SultanBlockApp"
@@ -67,6 +85,50 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Continuous audio monitor and stream clamp to enforce system-wide silence" />
         </service>
+
+        <!-- Certain Lock Accessibility Service for instant home redirection -->
+        <service
+            android:name=".certainlock.CertainLockAccessibilityService"
+            android:exported="true"
+            android:label="SULTAN BLOCK - Certain Lock"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/certain_lock_accessibility_service_config" />
+        </service>
+
+        <!-- Certain Lock Fallback Foreground Service -->
+        <service
+            android:name=".certainlock.CertainLockForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            tools:ignore="ForegroundServicePermission">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Monitors foreground apps to trigger home screen redirection when restricted apps launch" />
+        </service>
+
+        <!-- Schedule Receiver for Automated Protected Periods -->
+        <receiver
+            android:name=".schedule.ScheduleReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.schedule.ACTION_SCHEDULE_START" />
+                <action android:name="com.example.schedule.ACTION_SCHEDULE_END" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Timer Receiver for Expiry Management -->
+        <receiver
+            android:name=".timer.TimerReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.timer.ACTION_TIMER_EXPIRED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Boot Receiver for Auto-Restore if configured -->
         <receiver

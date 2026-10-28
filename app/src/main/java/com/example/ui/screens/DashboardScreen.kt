@@ -3,19 +3,18 @@ package com.example.ui.screens
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
-import com.example.network.NetworkStatus
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,11 +28,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.HourglassBottom
+import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VolumeMute
@@ -49,7 +57,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -61,7 +69,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,7 +83,18 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.certainlock.AddAppsDialog
+import com.example.certainlock.InstalledAppItem
+import com.example.network.NetworkStatus
+import com.example.pin.PinAuthDialog
+import com.example.pin.PinProtectionConfig
+import com.example.pin.PinSetupDialog
+import com.example.schedule.ScheduleDialog
+import com.example.schedule.ScheduleItem
+import com.example.timer.TimerState
 import com.example.ui.MainViewModel
+import com.example.ui.PermissionItem
+import com.example.ui.ProtectedSection
 import com.example.ui.components.CapabilityReportDialog
 import com.example.ui.components.CyberCard
 import com.example.ui.components.StatusPill
@@ -89,6 +111,7 @@ import com.example.ui.theme.SultanTextMuted
 import com.example.ui.theme.SultanTextPrimary
 import com.example.ui.theme.SultanTextSecondary
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DashboardScreen(
     viewModel: MainViewModel,
@@ -97,6 +120,7 @@ fun DashboardScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // State bindings
     val isVpnActive by viewModel.isVpnActive.collectAsState()
     val blockedPackets by viewModel.blockedPackets.collectAsState()
     val blockedBytes by viewModel.blockedBytes.collectAsState()
@@ -106,6 +130,22 @@ fun DashboardScreen(
     val volumeSuppressionCount by viewModel.volumeSuppressionCount.collectAsState()
     val audioStreams by viewModel.audioStreams.collectAsState()
 
+    val schedules by viewModel.schedules.collectAsState()
+    val nextActivationSummary by viewModel.nextActivationSummary.collectAsState()
+
+    val timerState by viewModel.timerState.collectAsState()
+    val timerCountdown by viewModel.timerCountdown.collectAsState()
+
+    val isCertainLockActive by viewModel.isCertainLockActive.collectAsState()
+    val lockedPackages by viewModel.lockedPackages.collectAsState()
+    val installedApps by viewModel.installedApps.collectAsState()
+    val certainLockRedirectCount by viewModel.certainLockRedirectCount.collectAsState()
+
+    val isPinSet by viewModel.isPinSet.collectAsState()
+    val pinConfig by viewModel.pinConfig.collectAsState()
+    val activePinChallenge by viewModel.activePinChallenge.collectAsState()
+    val showPinSetupDialog by viewModel.showPinSetupDialog.collectAsState()
+
     val networkStatus by viewModel.networkStatus.collectAsState()
     val permissions by viewModel.permissions.collectAsState()
 
@@ -114,6 +154,10 @@ fun DashboardScreen(
     val lockMediaOnly by viewModel.lockMediaOnly.collectAsState()
 
     val showCapabilityDialog by viewModel.showCapabilityDialog.collectAsState()
+    val showAddAppsDialog by viewModel.showAddAppsDialog.collectAsState()
+    val showScheduleDialog by viewModel.showScheduleDialog.collectAsState()
+    val editingSchedule by viewModel.editingSchedule.collectAsState()
+
     val feedbackMessage by viewModel.feedbackMessage.collectAsState()
 
     // Activity result launcher for VPN consent dialog
@@ -128,7 +172,6 @@ fun DashboardScreen(
         }
     }
 
-    // Permission launcher for POST_NOTIFICATIONS
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) {
@@ -137,6 +180,7 @@ fun DashboardScreen(
 
     LaunchedEffect(Unit) {
         viewModel.checkAllPermissions(context)
+        viewModel.loadApps(context)
     }
 
     LaunchedEffect(feedbackMessage) {
@@ -161,16 +205,18 @@ fun DashboardScreen(
             contentPadding = PaddingValues(vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // App Title Header & Emergency Disarm
+            // Header with Emergency Disarm
             item {
                 HeaderSection(
                     isVpnActive = isVpnActive,
                     isVolumeLockActive = isVolumeLockActive,
+                    isCertainLockActive = isCertainLockActive,
+                    isTimerActive = timerState.isActive,
                     onEmergencyRestore = { viewModel.emergencyRestoreAll(context) }
                 )
             }
 
-            // Error Banner if present
+            // Error banner if any
             if (vpnError != null) {
                 item {
                     ErrorBanner(
@@ -201,16 +247,7 @@ fun DashboardScreen(
                 )
             }
 
-            // CARD 2: WI-FI CONTROL
-            item {
-                WifiControlCard(
-                    networkStatus = networkStatus,
-                    isVpnActive = isVpnActive,
-                    onLaunchWifiPanel = { viewModel.openSystemWifiSettings(context) }
-                )
-            }
-
-            // CARD 3: VOLUME LOCK
+            // CARD 2: VOLUME LOCK
             item {
                 VolumeLockCard(
                     isVolumeLockActive = isVolumeLockActive,
@@ -222,33 +259,91 @@ fun DashboardScreen(
                 )
             }
 
-            // CARD 4: SYSTEM STATUS & REAL PROBE
+            // CARD 3: SCHEDULE
+            item {
+                ScheduleCard(
+                    schedules = schedules,
+                    nextActivationSummary = nextActivationSummary,
+                    onAddSchedule = { viewModel.openScheduleDialog(null) },
+                    onEditSchedule = { viewModel.openScheduleDialog(it) },
+                    onDeleteSchedule = { viewModel.deleteSchedule(it.id) },
+                    onToggleSchedule = { viewModel.toggleSchedule(it.id) }
+                )
+            }
+
+            // CARD 4: TIMER MODE
+            item {
+                TimerCard(
+                    timerState = timerState,
+                    countdownText = timerCountdown,
+                    onStartTimer = { duration, net, vol, appLock ->
+                        viewModel.startTimer(duration, net, vol, appLock)
+                    },
+                    onCancelTimer = { viewModel.cancelTimer() }
+                )
+            }
+
+            // CARD 5: APP LOCK — CERTAIN LOCK
+            item {
+                CertainLockCard(
+                    isLockActive = isCertainLockActive,
+                    lockedPackages = lockedPackages,
+                    installedApps = installedApps,
+                    redirectCount = certainLockRedirectCount,
+                    onToggleMaster = { viewModel.toggleCertainLock(context) },
+                    onOpenAddApps = { viewModel.setShowAddAppsDialog(true) },
+                    onRemoveApp = { viewModel.removeLockedApp(it) },
+                    onOpenAccessibility = { viewModel.openAccessibilitySettings(context) }
+                )
+            }
+
+            // CARD 6: PIN LOCK
+            item {
+                PinLockCard(
+                    isPinSet = isPinSet,
+                    config = pinConfig,
+                    onConfigurePin = { viewModel.setShowPinSetupDialog(true) },
+                    onUpdateConfig = { newConfig ->
+                        viewModel.updatePinConfig(newConfig)
+                    }
+                )
+            }
+
+            // CARD 7: SYSTEM STATUS & REAL PROBE
             item {
                 SystemStatusCard(
                     networkStatus = networkStatus,
                     isVpnActive = isVpnActive,
-                    onProbe = { viewModel.runConnectivityProbe() }
+                    onProbe = { viewModel.runConnectivityProbe() },
+                    onOpenWifiPanel = { viewModel.openSystemWifiSettings(context) }
                 )
             }
 
-            // CARD 5: PERMISSIONS & AUTHORIZATION
+            // CARD 8: PERMISSIONS & AUTHORIZATIONS
             item {
                 PermissionsCard(
                     permissions = permissions,
                     onRequestPermission = { item ->
-                        if (item.permission == "android.net.VpnService") {
-                            val prep = VpnService.prepare(context)
-                            if (prep != null) {
-                                vpnLauncher.launch(prep)
+                        when {
+                            item.permission == "android.net.VpnService" -> {
+                                val prep = VpnService.prepare(context)
+                                if (prep != null) vpnLauncher.launch(prep)
                             }
-                        } else {
-                            permissionLauncher.launch(item.permission)
+                            item.isAccessibility -> {
+                                viewModel.openAccessibilitySettings(context)
+                            }
+                            item.isUsageAccess -> {
+                                viewModel.openUsageAccessSettings(context)
+                            }
+                            else -> {
+                                permissionLauncher.launch(item.permission)
+                            }
                         }
                     }
                 )
             }
 
-            // CARD 6: SETTINGS & CAPABILITY REPORT
+            // CARD 9: SETTINGS & CAPABILITY REPORT
             item {
                 SettingsCard(
                     autoRestoreInternet = autoRestoreInternet,
@@ -261,6 +356,46 @@ fun DashboardScreen(
         }
     }
 
+    // PIN Authentication Dialog Guard
+    if (activePinChallenge != null) {
+        PinAuthDialog(
+            pinManager = viewModel.pinManager,
+            onSuccess = { viewModel.onPinChallengeResolved(true) },
+            onDismiss = { viewModel.onPinChallengeResolved(false) }
+        )
+    }
+
+    // PIN Setup Dialog
+    if (showPinSetupDialog) {
+        PinSetupDialog(
+            pinManager = viewModel.pinManager,
+            onComplete = {
+                viewModel.setShowPinSetupDialog(false)
+                viewModel.setFeedback("PIN lock active.")
+            },
+            onDismiss = { viewModel.setShowPinSetupDialog(false) }
+        )
+    }
+
+    // Schedule Dialog
+    if (showScheduleDialog) {
+        ScheduleDialog(
+            initialItem = editingSchedule,
+            onSave = { viewModel.saveSchedule(it) },
+            onDismiss = { viewModel.dismissScheduleDialog() }
+        )
+    }
+
+    // Add Apps Dialog (Certain Lock)
+    if (showAddAppsDialog) {
+        AddAppsDialog(
+            installedApps = installedApps,
+            onToggleApp = { viewModel.toggleAppLocked(it) },
+            onDismiss = { viewModel.setShowAddAppsDialog(false) }
+        )
+    }
+
+    // Capability Report Dialog
     if (showCapabilityDialog) {
         CapabilityReportDialog(onDismiss = { viewModel.setShowCapabilityDialog(false) })
     }
@@ -270,8 +405,12 @@ fun DashboardScreen(
 private fun HeaderSection(
     isVpnActive: Boolean,
     isVolumeLockActive: Boolean,
+    isCertainLockActive: Boolean,
+    isTimerActive: Boolean,
     onEmergencyRestore: () -> Unit
 ) {
+    val anyActive = isVpnActive || isVolumeLockActive || isCertainLockActive || isTimerActive
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -283,7 +422,7 @@ private fun HeaderSection(
                     modifier = Modifier
                         .size(10.dp)
                         .clip(CircleShape)
-                        .background(if (isVpnActive || isVolumeLockActive) SultanRed else SultanEmerald)
+                        .background(if (anyActive) SultanRed else SultanEmerald)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -305,7 +444,7 @@ private fun HeaderSection(
             )
         }
 
-        if (isVpnActive || isVolumeLockActive) {
+        if (anyActive) {
             Button(
                 onClick = onEmergencyRestore,
                 colors = ButtonDefaults.buttonColors(containerColor = SultanRed.copy(alpha = 0.2f)),
@@ -376,7 +515,6 @@ private fun InternetBlockCard(
             )
         }
     ) {
-        // Master Toggle Row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -388,12 +526,7 @@ private fun InternetBlockCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "MASTER INTERNET BLOCK",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SultanTextPrimary
-                )
+                Text("MASTER INTERNET BLOCK", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SultanTextPrimary)
                 Text(
                     text = if (isVpnActive) "Loopback active. Packets dropped immediately." else "Internet traffic is flowing normally.",
                     fontSize = 11.sp,
@@ -414,9 +547,8 @@ private fun InternetBlockCard(
             )
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Metrics Grid
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -434,105 +566,6 @@ private fun InternetBlockCard(
                 modifier = Modifier.weight(1f)
             )
         }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Scope description
-        Text(
-            text = "Enforces zero-data leakage on YouTube, Instagram, WhatsApp, browsers, games, VoIP calls, and background OS tasks using legitimate Android VpnService.",
-            fontSize = 11.sp,
-            lineHeight = 15.sp,
-            color = SultanTextMuted
-        )
-    }
-}
-
-@Composable
-private fun WifiControlCard(
-    networkStatus: NetworkStatus,
-    isVpnActive: Boolean,
-    onLaunchWifiPanel: () -> Unit
-) {
-    CyberCard(
-        title = "WI-FI CONTROL",
-        subtitle = "Network interface monitoring & system controls",
-        icon = if (networkStatus.isWifiConnected) Icons.Default.Wifi else Icons.Default.WifiOff,
-        iconTint = if (networkStatus.isWifiConnected) SultanCyan else SultanTextMuted,
-        trailingBadge = {
-            StatusPill(
-                text = if (networkStatus.isWifiConnected) "CONNECTED" else if (networkStatus.isWifiEnabled) "RADIO ON" else "RADIO OFF",
-                color = if (networkStatus.isWifiConnected) SultanCyan else SultanTextMuted
-            )
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(SultanDarkBg)
-                .border(1.dp, SultanCardBorder.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                .padding(14.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = networkStatus.wifiSsid ?: "No Wi-Fi Network",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SultanTextPrimary
-                    )
-                    Text(
-                        text = if (networkStatus.isWifiConnected) {
-                            "Signal: ${networkStatus.wifiRssi} dBm | Speed: ${networkStatus.wifiLinkSpeed} Mbps"
-                        } else {
-                            "Wi-Fi interface is currently inactive"
-                        },
-                        fontSize = 11.sp,
-                        color = SultanTextSecondary
-                    )
-                }
-
-                StatusPill(
-                    text = if (isVpnActive) "TRAFFIC SINKED" else "PASSING",
-                    color = if (isVpnActive) SultanRed else SultanEmerald,
-                    hasDot = false
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Button(
-                onClick = onLaunchWifiPanel,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("open_wifi_panel_button"),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = SultanSurfaceElevated),
-                border = androidx.compose.foundation.BorderStroke(1.dp, SultanCardBorder)
-            ) {
-                Icon(Icons.Default.Wifi, contentDescription = null, tint = SultanCyan, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "OPEN SYSTEM WI-FI / INTERNET PANEL",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SultanTextPrimary
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Text(
-            text = "Android 10+ OS Policy: Apps cannot silently disable the physical Wi-Fi radio without enterprise Device Owner privileges. Use the panel button above or master Internet Block.",
-            fontSize = 11.sp,
-            lineHeight = 15.sp,
-            color = SultanTextMuted
-        )
     }
 }
 
@@ -563,7 +596,6 @@ private fun VolumeLockCard(
             )
         }
     ) {
-        // Master Toggle Row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -575,12 +607,7 @@ private fun VolumeLockCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "MASTER VOLUME LOCK",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SultanTextPrimary
-                )
+                Text("MASTER VOLUME LOCK", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SultanTextPrimary)
                 Text(
                     text = if (isVolumeLockActive) "Actively clamping audio streams to zero." else "Normal audio output permitted.",
                     fontSize = 11.sp,
@@ -601,9 +628,8 @@ private fun VolumeLockCard(
             )
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Suppression Stats & Stream snapshot
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -621,37 +647,399 @@ private fun VolumeLockCard(
                 modifier = Modifier.weight(1f)
             )
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Streams Display
-        Column(
+@Composable
+private fun ScheduleCard(
+    schedules: List<ScheduleItem>,
+    nextActivationSummary: String,
+    onAddSchedule: () -> Unit,
+    onEditSchedule: (ScheduleItem) -> Unit,
+    onDeleteSchedule: (ScheduleItem) -> Unit,
+    onToggleSchedule: (ScheduleItem) -> Unit
+) {
+    CyberCard(
+        title = "SCHEDULE",
+        subtitle = "Automated protection windows",
+        icon = Icons.Default.Schedule,
+        iconTint = SultanCyan,
+        trailingBadge = {
+            Button(
+                onClick = onAddSchedule,
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SultanCyan.copy(alpha = 0.2f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, SultanCyan),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                modifier = Modifier.testTag("add_schedule_button")
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, tint = SultanCyan, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("ADD", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SultanCyan)
+            }
+        }
+    ) {
+        // Next Activation Banner
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
                 .background(SultanDarkBg)
-                .padding(10.dp)
+                .padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("TARGET AUDIO STREAMS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SultanTextMuted)
+            Icon(Icons.Default.Info, contentDescription = null, tint = SultanCyan, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text("NEXT ACTIVATION", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = SultanTextMuted)
+                Text(nextActivationSummary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = SultanTextPrimary)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (schedules.isEmpty()) {
+            Text("No schedules created. Tap '+ ADD' above to configure automated focus windows.", fontSize = 11.sp, color = SultanTextMuted)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                schedules.forEach { item ->
+                    ScheduleRow(
+                        item = item,
+                        onEdit = { onEditSchedule(item) },
+                        onDelete = { onDeleteSchedule(item) },
+                        onToggle = { onToggleSchedule(item) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleRow(
+    item: ScheduleItem,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(SultanDarkBg)
+            .border(1.dp, SultanCardBorder.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(item.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SultanTextPrimary)
+            Text(
+                text = "${item.formatStartTime()} - ${item.formatEndTime()} • ${item.formatDays()}",
+                fontSize = 11.sp,
+                color = SultanCyan
+            )
+            val controlled = mutableListOf<String>().apply {
+                if (item.controlInternet) add("Internet")
+                if (item.controlVolume) add("Volume")
+                if (item.controlAppLock) add("CertainLock")
+            }.joinToString(", ")
+            Text("Controls: $controlled", fontSize = 10.sp, color = SultanTextMuted)
+        }
+
+        IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = SultanTextSecondary, modifier = Modifier.size(16.dp))
+        }
+
+        IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = SultanRed, modifier = Modifier.size(16.dp))
+        }
+
+        Switch(
+            checked = item.isEnabled,
+            onCheckedChange = { onToggle() },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = SultanCyan,
+                uncheckedThumbColor = SultanTextMuted,
+                uncheckedTrackColor = SultanSurfaceElevated
+            )
+        )
+    }
+}
+
+@Composable
+private fun TimerCard(
+    timerState: TimerState,
+    countdownText: String,
+    onStartTimer: (Long, Boolean, Boolean, Boolean) -> Unit,
+    onCancelTimer: () -> Unit
+) {
+    var selectedMinutes by remember { mutableLongStateOf(60L) }
+    var ctrlNet by remember { mutableStateOf(true) }
+    var ctrlVol by remember { mutableStateOf(true) }
+    var ctrlAppLock by remember { mutableStateOf(true) }
+
+    CyberCard(
+        title = "TIMER MODE",
+        subtitle = "Quick temporary countdown protection",
+        icon = if (timerState.isActive) Icons.Default.HourglassBottom else Icons.Default.HourglassTop,
+        iconTint = if (timerState.isActive) SultanRed else SultanCyan,
+        trailingBadge = {
+            StatusPill(
+                text = if (timerState.isActive) "RUNNING" else "STANDBY",
+                color = if (timerState.isActive) SultanRed else SultanTextMuted
+            )
+        }
+    ) {
+        if (timerState.isActive) {
+            // Active countdown display
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(SultanDarkBg)
+                    .border(1.dp, SultanRed.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("TIME REMAINING", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SultanTextMuted)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = countdownText,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace,
+                    color = SultanRed
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val protectedFeatures = mutableListOf<String>().apply {
+                    if (timerState.controlInternet) add("Internet Block")
+                    if (timerState.controlVolume) add("Volume Lock")
+                    if (timerState.controlAppLock) add("Certain Lock")
+                }.joinToString(" • ")
+
+                Text(protectedFeatures, fontSize = 11.sp, color = SultanTextSecondary)
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Button(
+                    onClick = onCancelTimer,
+                    colors = ButtonDefaults.buttonColors(containerColor = SultanRed.copy(alpha = 0.2f)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, SultanRed),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.testTag("cancel_timer_button")
+                ) {
+                    Text("CANCEL TIMER", color = SultanRed, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                }
+            }
+        } else {
+            // Preset duration chips
+            Text("SELECT DURATION", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SultanTextMuted)
             Spacer(modifier = Modifier.height(6.dp))
 
-            if (audioStreams.isEmpty()) {
-                Text("Engage Volume Lock to inspect live streams", fontSize = 11.sp, color = SultanTextSecondary)
-            } else {
-                audioStreams.take(4).forEach { stream ->
-                    Row(
+            val presets = listOf(30L to "30 Min", 60L to "1 Hour", 120L to "2 Hours", 180L to "3 Hours")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                presets.forEach { (mins, label) ->
+                    val isSelected = selectedMinutes == mins
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 3.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) SultanCyan else SultanDarkBg)
+                            .border(1.dp, if (isSelected) SultanCyan else SultanCardBorder, RoundedCornerShape(8.dp))
+                            .clickable { selectedMinutes = mins }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(stream.name, fontSize = 12.sp, color = SultanTextPrimary)
                         Text(
-                            text = if (isVolumeLockActive) "0 / ${stream.maxVolume} (MUTED)" else "${stream.currentVolume} / ${stream.maxVolume}",
+                            text = label,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isVolumeLockActive) SultanRed else SultanEmerald
+                            color = if (isSelected) Color.Black else SultanTextPrimary
                         )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Protections checklist
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                TimerFeatureCheck("Internet", ctrlNet) { ctrlNet = it }
+                TimerFeatureCheck("Volume", ctrlVol) { ctrlVol = it }
+                TimerFeatureCheck("Certain Lock", ctrlAppLock) { ctrlAppLock = it }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Button(
+                onClick = { onStartTimer(selectedMinutes, ctrlNet, ctrlVol, ctrlAppLock) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("start_timer_button"),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SultanCyan.copy(alpha = 0.2f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, SultanCyan)
+            ) {
+                Icon(Icons.Default.HourglassTop, contentDescription = null, tint = SultanCyan, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("START TIMER ($selectedMinutes MIN)", color = SultanCyan, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimerFeatureCheck(label: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clickable { onToggle(!checked) }
+    ) {
+        androidx.compose.material3.Checkbox(
+            checked = checked,
+            onCheckedChange = onToggle,
+            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                checkedColor = SultanCyan,
+                uncheckedColor = SultanCardBorder
+            ),
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(label, fontSize = 11.sp, color = SultanTextPrimary)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CertainLockCard(
+    isLockActive: Boolean,
+    lockedPackages: Set<String>,
+    installedApps: List<InstalledAppItem>,
+    redirectCount: Long,
+    onToggleMaster: () -> Unit,
+    onOpenAddApps: () -> Unit,
+    onRemoveApp: (String) -> Unit,
+    onOpenAccessibility: () -> Unit
+) {
+    val borderColor by animateColorAsState(
+        targetValue = if (isLockActive) SultanRed else SultanCardBorder,
+        label = "certainLockBorder"
+    )
+
+    CyberCard(
+        title = "APP LOCK — CERTAIN LOCK",
+        subtitle = "Returns restricted apps to Home Screen upon launch",
+        icon = Icons.Default.Apps,
+        iconTint = if (isLockActive) SultanRed else SultanEmerald,
+        borderColor = borderColor,
+        trailingBadge = {
+            StatusPill(
+                text = if (isLockActive) "ACTIVE" else "DISABLED",
+                color = if (isLockActive) SultanRed else SultanTextMuted
+            )
+        }
+    ) {
+        // Master switch
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(SultanDarkBg)
+                .border(1.dp, SultanCardBorder.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("MASTER CERTAIN LOCK", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SultanTextPrimary)
+                Text(
+                    text = if (isLockActive) "Actively redirecting restricted apps to Home Screen." else "App restrictions disarmed.",
+                    fontSize = 11.sp,
+                    color = SultanTextSecondary
+                )
+            }
+
+            Switch(
+                checked = isLockActive,
+                onCheckedChange = { onToggleMaster() },
+                modifier = Modifier.testTag("certain_lock_master_toggle"),
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = SultanRed,
+                    uncheckedThumbColor = SultanTextMuted,
+                    uncheckedTrackColor = SultanSurfaceElevated
+                )
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Selected Apps row & Add Apps button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${lockedPackages.size} RESTRICTED APPS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = SultanTextMuted
+            )
+
+            Button(
+                onClick = onOpenAddApps,
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SultanRed.copy(alpha = 0.2f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, SultanRed),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                modifier = Modifier.testTag("add_apps_button")
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, tint = SultanRed, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("ADD APPS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SultanRed)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Flow of selected app chips
+        if (lockedPackages.isEmpty()) {
+            Text("No applications selected. Tap '+ ADD APPS' to select Instagram, ChatGPT, BGMI, etc.", fontSize = 11.sp, color = SultanTextMuted)
+        } else {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                lockedPackages.forEach { pkg ->
+                    val appName = installedApps.find { it.packageName == pkg }?.appName ?: pkg.substringAfterLast('.')
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(SultanDarkBg)
+                            .border(1.dp, SultanCardBorder, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(appName, fontSize = 11.sp, color = SultanTextPrimary)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Remove",
+                                tint = SultanRed,
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .clickable { onRemoveApp(pkg) }
+                            )
+                        }
                     }
                 }
             }
@@ -659,28 +1047,115 @@ private fun VolumeLockCard(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Toggle media only vs all
+        MetricTile(
+            label = "REDIRECTED TO HOME",
+            value = "$redirectCount times",
+            color = if (isLockActive) SultanRed else SultanTextSecondary,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun PinLockCard(
+    isPinSet: Boolean,
+    config: PinProtectionConfig,
+    onConfigurePin: () -> Unit,
+    onUpdateConfig: (PinProtectionConfig) -> Unit
+) {
+    CyberCard(
+        title = "PIN LOCK",
+        subtitle = "Salted cryptographic protection for settings & toggles",
+        icon = Icons.Default.Lock,
+        iconTint = if (isPinSet) SultanEmerald else SultanAmber,
+        trailingBadge = {
+            StatusPill(
+                text = if (isPinSet) "ARMED" else "NO PIN",
+                color = if (isPinSet) SultanEmerald else SultanAmber
+            )
+        }
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(SultanDarkBg)
+                .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "Lock Media Only (Keep Ringtone)",
-                fontSize = 12.sp,
-                color = SultanTextSecondary
-            )
-            Switch(
-                checked = lockMediaOnly,
-                onCheckedChange = onToggleMediaOnly,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = SultanCyan,
-                    uncheckedThumbColor = SultanTextMuted,
-                    uncheckedTrackColor = SultanSurfaceElevated
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (isPinSet) "PIN IS ACTIVE" else "NO PIN CONFIGURED",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = SultanTextPrimary
                 )
-            )
+                Text(
+                    text = if (isPinSet) "Protected sections require PIN to modify." else "Create a PIN to prevent unauthorized disarming.",
+                    fontSize = 10.sp,
+                    color = SultanTextMuted
+                )
+            }
+
+            Button(
+                onClick = onConfigurePin,
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SultanCyan.copy(alpha = 0.2f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, SultanCyan),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                modifier = Modifier.testTag("configure_pin_button")
+            ) {
+                Text(if (isPinSet) "CHANGE PIN" else "CREATE PIN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SultanCyan)
+            }
         }
+
+        if (isPinSet) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Text("PROTECTED SECTIONS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SultanTextMuted)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                PinToggleRow("Protect Internet Block Toggle", config.protectInternetBlock) {
+                    onUpdateConfig(config.copy(protectInternetBlock = it))
+                }
+                PinToggleRow("Protect Volume Lock Toggle", config.protectVolumeLock) {
+                    onUpdateConfig(config.copy(protectVolumeLock = it))
+                }
+                PinToggleRow("Protect Certain Lock Settings", config.protectCertainLock) {
+                    onUpdateConfig(config.copy(protectCertainLock = it))
+                }
+                PinToggleRow("Protect Schedule Settings", config.protectSchedule) {
+                    onUpdateConfig(config.copy(protectSchedule = it))
+                }
+                PinToggleRow("Protect Timer Settings", config.protectTimer) {
+                    onUpdateConfig(config.copy(protectTimer = it))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PinToggleRow(label: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = 11.sp, color = SultanTextSecondary)
+        Switch(
+            checked = checked,
+            onCheckedChange = onToggle,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = SultanEmerald,
+                uncheckedThumbColor = SultanTextMuted,
+                uncheckedTrackColor = SultanSurfaceElevated
+            )
+        )
     }
 }
 
@@ -688,7 +1163,8 @@ private fun VolumeLockCard(
 private fun SystemStatusCard(
     networkStatus: NetworkStatus,
     isVpnActive: Boolean,
-    onProbe: () -> Unit
+    onProbe: () -> Unit,
+    onOpenWifiPanel: () -> Unit
 ) {
     CyberCard(
         title = "SYSTEM STATUS",
@@ -719,19 +1195,13 @@ private fun SystemStatusCard(
                 color = SultanCardBorder.copy(alpha = 0.5f)
             )
 
-            // Probe verification section
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "REAL-TIME LEAKAGE PROBE",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SultanTextPrimary
-                    )
+                    Text("REAL-TIME LEAKAGE PROBE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SultanTextPrimary)
                     Text(
                         text = networkStatus.lastProbeResult,
                         fontSize = 11.sp,
@@ -757,14 +1227,28 @@ private fun SystemStatusCard(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Button(
+                onClick = onOpenWifiPanel,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SultanSurfaceElevated),
+                border = androidx.compose.foundation.BorderStroke(1.dp, SultanCardBorder)
+            ) {
+                Icon(Icons.Default.Wifi, contentDescription = null, tint = SultanCyan, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("LAUNCH WI-FI PANEL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SultanTextPrimary)
+            }
         }
     }
 }
 
 @Composable
 private fun PermissionsCard(
-    permissions: List<com.example.ui.PermissionItem>,
-    onRequestPermission: (com.example.ui.PermissionItem) -> Unit
+    permissions: List<PermissionItem>,
+    onRequestPermission: (PermissionItem) -> Unit
 ) {
     CyberCard(
         title = "PERMISSIONS & AUTHORIZATIONS",
