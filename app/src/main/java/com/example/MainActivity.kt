@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 val context = applicationContext
                 val settingsRepo = SettingsRepository(context)
+                val protectionRepo = com.example.data.ProtectionPreferencesRepository(context)
                 val networkInfoManager = NetworkInfoManager(context)
                 val scheduleManager = ScheduleManager(context, settingsRepo)
                 val timerManager = TimerManager(context, settingsRepo)
@@ -36,6 +37,7 @@ class MainActivity : ComponentActivity() {
                 return MainViewModel(
                     networkInfoManager = networkInfoManager,
                     settingsRepository = settingsRepo,
+                    protectionPreferencesRepository = protectionRepo,
                     scheduleManager = scheduleManager,
                     timerManager = timerManager,
                     pinManager = pinManager

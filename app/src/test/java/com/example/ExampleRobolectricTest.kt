@@ -4,9 +4,12 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.audio.VolumeStateManager
 import com.example.certainlock.CertainLockManager
+import com.example.data.ProtectionPreferencesRepository
 import com.example.schedule.ScheduleItem
 import com.example.timer.TimerState
 import com.example.vpn.VpnStateManager
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -107,5 +110,40 @@ class ExampleRobolectricTest {
         )
         assertTrue(timer.remainingMillis() > 0)
         assertTrue(timer.formatRemaining().contains(":"))
+    }
+
+    @Test
+    fun testProtectionPreferencesRepository() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repo = ProtectionPreferencesRepository(context)
+
+        repo.setInternetBlockEnabled(true)
+        assertTrue(repo.isInternetBlockEnabled.first())
+
+        repo.setVolumeLockEnabled(true)
+        assertTrue(repo.isVolumeLockEnabled.first())
+
+        repo.setAppLockEnabled(true)
+        assertTrue(repo.isAppLockEnabled.first())
+
+        val pkgs = setOf("com.facebook.katana", "com.twitter.android")
+        repo.setLockedAppPackages(pkgs)
+        assertEquals(pkgs, repo.lockedAppPackages.first())
+
+        repo.setLockMediaOnly(true)
+        assertTrue(repo.isLockMediaOnly.first())
+
+        val states = repo.toggleStates.first()
+        assertTrue(states.isInternetBlockEnabled)
+        assertTrue(states.isVolumeLockEnabled)
+        assertTrue(states.isAppLockEnabled)
+        assertTrue(states.isLockMediaOnly)
+        assertEquals(pkgs, states.lockedAppPackages)
+
+        repo.clearAllToggles()
+        val clearedStates = repo.toggleStates.first()
+        assertFalse(clearedStates.isInternetBlockEnabled)
+        assertFalse(clearedStates.isVolumeLockEnabled)
+        assertFalse(clearedStates.isAppLockEnabled)
     }
 }

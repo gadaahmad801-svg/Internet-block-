@@ -63,6 +63,7 @@ data class PinChallenge(
 class MainViewModel(
     val networkInfoManager: NetworkInfoManager,
     val settingsRepository: SettingsRepository,
+    val protectionPreferencesRepository: com.example.data.ProtectionPreferencesRepository,
     val scheduleManager: ScheduleManager,
     val timerManager: TimerManager,
     val pinManager: PinManager
@@ -137,11 +138,23 @@ class MainViewModel(
             scheduleManager.loadSchedules()
             timerManager.loadState()
 
-            // Load saved CertainLock packages
-            val savedLocked = settingsRepository.lockedPackages.first()
-            CertainLockManager.setLockedPackages(savedLocked)
-            val savedCertainLockActive = settingsRepository.isCertainLockActive.first()
-            CertainLockManager.updateActiveState(savedCertainLockActive)
+            // Load saved CertainLock packages and toggle states from repository
+            val persistedToggles = protectionPreferencesRepository.toggleStates.first()
+            if (persistedToggles.lockedAppPackages.isNotEmpty()) {
+                CertainLockManager.setLockedPackages(persistedToggles.lockedAppPackages)
+            } else {
+                val savedLocked = settingsRepository.lockedPackages.first()
+                if (savedLocked.isNotEmpty()) {
+                    CertainLockManager.setLockedPackages(savedLocked)
+                    protectionPreferencesRepository.setLockedAppPackages(savedLocked)
+                }
+            }
+            if (persistedToggles.isAppLockEnabled) {
+                CertainLockManager.updateActiveState(true)
+            } else {
+                val savedCertainLockActive = settingsRepository.isCertainLockActive.first()
+                CertainLockManager.updateActiveState(savedCertainLockActive)
+            }
 
             // Start countdown ticker for timer
             while (true) {
@@ -303,6 +316,9 @@ class MainViewModel(
             } else {
                 context.startService(intent)
             }
+            viewModelScope.launch {
+                protectionPreferencesRepository.setInternetBlockEnabled(true)
+            }
             setFeedback("Activating internet blackhole tunnel...")
         }
     }
@@ -313,6 +329,9 @@ class MainViewModel(
                 action = SultanBlockVpnService.ACTION_STOP
             }
             context.startService(intent)
+            viewModelScope.launch {
+                protectionPreferencesRepository.setInternetBlockEnabled(false)
+            }
             setFeedback("Internet traffic restored to normal.")
         }
     }
@@ -320,10 +339,11 @@ class MainViewModel(
     fun toggleVolumeLock(context: Context) {
         performProtectedAction(ProtectedSection.VOLUME_LOCK) {
             val active = isVolumeLockActive.value
+            val newActive = !active
             val intent = Intent(context, VolumeLockService::class.java).apply {
                 action = if (active) VolumeLockService.ACTION_STOP else VolumeLockService.ACTION_START
             }
-            if (!active) {
+            if (newActive) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
@@ -333,6 +353,9 @@ class MainViewModel(
             } else {
                 context.startService(intent)
                 setFeedback("Volume lock disengaged. Normal audio restored.")
+            }
+            viewModelScope.launch {
+                protectionPreferencesRepository.setVolumeLockEnabled(newActive)
             }
         }
     }
@@ -344,6 +367,7 @@ class MainViewModel(
             CertainLockManager.updateActiveState(newActive)
             viewModelScope.launch {
                 settingsRepository.saveCertainLockActive(newActive)
+                protectionPreferencesRepository.setAppLockEnabled(newActive)
             }
 
             val intent = Intent(context, CertainLockForegroundService::class.java).apply {
@@ -373,6 +397,7 @@ class MainViewModel(
         val updated = CertainLockManager.toggleAppLocked(packageName)
         viewModelScope.launch {
             settingsRepository.saveLockedPackages(updated)
+            protectionPreferencesRepository.setLockedAppPackages(updated)
         }
     }
 
@@ -380,6 +405,7 @@ class MainViewModel(
         val updated = CertainLockManager.removeLockedApp(packageName)
         viewModelScope.launch {
             settingsRepository.saveLockedPackages(updated)
+            protectionPreferencesRepository.setLockedAppPackages(updated)
         }
     }
 
@@ -476,6 +502,7 @@ class MainViewModel(
 
             viewModelScope.launch {
                 timerManager.cancelTimer()
+                protectionPreferencesRepository.clearAllToggles()
             }
             setFeedback("Emergency Disarm: All protections disabled.")
         }
@@ -522,6 +549,7 @@ class MainViewModel(
     fun setLockMediaOnly(mediaOnly: Boolean) {
         viewModelScope.launch {
             settingsRepository.setLockMediaOnly(mediaOnly)
+            protectionPreferencesRepository.setLockMediaOnly(mediaOnly)
             VolumeStateManager.setLockMediaOnly(mediaOnly)
         }
     }
