@@ -11,12 +11,13 @@ import java.security.SecureRandom
 import java.util.Locale
 
 data class PinProtectionConfig(
-    val protectSettings: Boolean = true,
+    val protectAppLockSettings: Boolean = true,
+    val protectSelectedApps: Boolean = true,
     val protectInternetBlock: Boolean = false,
     val protectVolumeLock: Boolean = false,
-    val protectSchedule: Boolean = false,
     val protectTimer: Boolean = false,
-    val protectCertainLock: Boolean = false
+    val protectSchedule: Boolean = false,
+    val protectSecuritySettings: Boolean = true
 )
 
 class PinManager(private val settingsRepository: SettingsRepository) {
@@ -27,6 +28,15 @@ class PinManager(private val settingsRepository: SettingsRepository) {
     private val _config = MutableStateFlow(PinProtectionConfig())
     val config: StateFlow<PinProtectionConfig> = _config.asStateFlow()
 
+    // Session authentication to prevent annoying re-prompts on every navigation
+    private var sessionAuthenticated = false
+
+    fun isSessionAuthenticated(): Boolean = sessionAuthenticated
+
+    fun setSessionAuthenticated(authenticated: Boolean) {
+        sessionAuthenticated = authenticated
+    }
+
     suspend fun initialize() {
         val hash = settingsRepository.pinHash.first()
         _isPinSet.value = !hash.isNullOrEmpty()
@@ -35,43 +45,58 @@ class PinManager(private val settingsRepository: SettingsRepository) {
 
     private suspend fun loadConfig() {
         _config.value = PinProtectionConfig(
-            protectSettings = settingsRepository.protectSettings.first(),
+            protectAppLockSettings = settingsRepository.protectAppLockSettings.first(),
+            protectSelectedApps = settingsRepository.protectSelectedApps.first(),
             protectInternetBlock = settingsRepository.protectInternetBlock.first(),
             protectVolumeLock = settingsRepository.protectVolumeLock.first(),
-            protectSchedule = settingsRepository.protectSchedule.first(),
             protectTimer = settingsRepository.protectTimer.first(),
-            protectCertainLock = settingsRepository.protectCertainLock.first()
+            protectSchedule = settingsRepository.protectSchedule.first(),
+            protectSecuritySettings = settingsRepository.protectSecuritySettings.first()
         )
     }
 
-    suspend fun setPin(pin: String, recoveryAnswer: String): String {
+    suspend fun setPin(sixDigitPin: String, recoveryAnswer: String): Boolean {
+        if (sixDigitPin.length != 6 || !sixDigitPin.all { it.isDigit() }) {
+            return false
+        }
         val salt = generateSalt()
-        val hash = hashPin(pin, salt)
+        val hash = hashPin(sixDigitPin, salt)
         val recoverySalt = generateSalt()
         val recoveryHash = hashPin(recoveryAnswer.trim().lowercase(Locale.ROOT), recoverySalt)
 
         settingsRepository.savePin(hash = hash, salt = salt, recoveryHash = recoveryHash, recoverySalt = recoverySalt)
         _isPinSet.value = true
-        return recoveryAnswer
+        sessionAuthenticated = true
+        return true
     }
 
     suspend fun verifyPin(enteredPin: String): Boolean {
+        if (enteredPin.length != 6 || !enteredPin.all { it.isDigit() }) return false
         val storedHash = settingsRepository.pinHash.first() ?: return false
         val storedSalt = settingsRepository.pinSalt.first() ?: return false
         val computedHash = hashPin(enteredPin, storedSalt)
-        return computedHash == storedHash
+        val matches = computedHash == storedHash
+        if (matches) {
+            sessionAuthenticated = true
+        }
+        return matches
     }
 
     suspend fun verifyRecoveryAnswer(enteredAnswer: String): Boolean {
         val storedRecoveryHash = settingsRepository.recoveryHash.first() ?: return false
         val storedRecoverySalt = settingsRepository.recoverySalt.first() ?: return false
         val computedHash = hashPin(enteredAnswer.trim().lowercase(Locale.ROOT), storedRecoverySalt)
-        return computedHash == storedRecoveryHash
+        val matches = computedHash == storedRecoveryHash
+        if (matches) {
+            sessionAuthenticated = true
+        }
+        return matches
     }
 
     suspend fun resetPin() {
         settingsRepository.clearPin()
         _isPinSet.value = false
+        sessionAuthenticated = false
     }
 
     suspend fun updateConfig(newConfig: PinProtectionConfig) {

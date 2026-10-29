@@ -25,10 +25,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.SultanCardBorder
-import com.example.ui.theme.SultanSurfaceCard
-import com.example.ui.theme.SultanTextPrimary
-import com.example.ui.theme.SultanTextSecondary
+import com.example.ui.theme.LocalExtendedColors
 
 @Composable
 fun CyberCard(
@@ -38,16 +35,21 @@ fun CyberCard(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     trailingBadge: @Composable (() -> Unit)? = null,
-    borderColor: Color = SultanCardBorder,
+    borderColor: Color? = null,
+    backgroundColor: Color? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val extendedColors = LocalExtendedColors.current
+    val effectiveBorderColor = borderColor ?: extendedColors.border
+    val effectiveBgColor = backgroundColor ?: extendedColors.card
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = SultanSurfaceCard
+            containerColor = effectiveBgColor
         ),
-        border = BorderStroke(1.dp, borderColor)
+        border = BorderStroke(1.dp, effectiveBorderColor)
     ) {
         Column(
             modifier = Modifier
@@ -76,17 +78,17 @@ fun CyberCard(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = 17.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.5.sp
                         ),
-                        color = SultanTextPrimary
+                        color = extendedColors.textPrimary
                     )
                     if (subtitle != null) {
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                            color = SultanTextSecondary
+                            color = extendedColors.textSecondary
                         )
                     }
                 }

@@ -98,6 +98,8 @@ import com.example.ui.ProtectedSection
 import com.example.ui.components.CapabilityReportDialog
 import com.example.ui.components.CyberCard
 import com.example.ui.components.StatusPill
+import com.example.ui.theme.AppThemeMode
+import com.example.ui.theme.LocalExtendedColors
 import com.example.ui.theme.SultanAmber
 import com.example.ui.theme.SultanCardBorder
 import com.example.ui.theme.SultanCyan
@@ -118,7 +120,11 @@ fun DashboardScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val extendedColors = LocalExtendedColors.current
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Theme state
+    val themeMode by viewModel.themeMode.collectAsState()
 
     // State bindings
     val isVpnActive by viewModel.isVpnActive.collectAsState()
@@ -194,7 +200,7 @@ fun DashboardScreen(
         modifier = modifier
             .fillMaxSize()
             .testTag("dashboard_screen"),
-        containerColor = SultanDarkBg,
+        containerColor = extendedColors.bg,
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         LazyColumn(
@@ -285,15 +291,26 @@ fun DashboardScreen(
 
             // CARD 5: APP LOCK — CERTAIN LOCK
             item {
+                val a11yGranted = permissions.find { it.isAccessibility }?.isGranted ?: false
+                val usageAccessGranted = permissions.find { it.isUsageAccess }?.isGranted ?: false
                 CertainLockCard(
                     isLockActive = isCertainLockActive,
                     lockedPackages = lockedPackages,
                     installedApps = installedApps,
                     redirectCount = certainLockRedirectCount,
+                    isPinProtected = isPinSet && pinConfig.protectAppLockSettings,
+                    a11yGranted = a11yGranted,
+                    usageAccessGranted = usageAccessGranted,
                     onToggleMaster = { viewModel.toggleCertainLock(context) },
-                    onOpenAddApps = { viewModel.setShowAddAppsDialog(true) },
+                    onOpenAddApps = {
+                        viewModel.performProtectedAction(ProtectedSection.APP_LOCK_SELECTION) {
+                            viewModel.setShowAddAppsDialog(true)
+                        }
+                    },
                     onRemoveApp = { viewModel.removeLockedApp(it) },
-                    onOpenAccessibility = { viewModel.openAccessibilitySettings(context) }
+                    onOpenAccessibility = { viewModel.openAccessibilitySettings(context) },
+                    onOpenUsageAccess = { viewModel.openUsageAccessSettings(context) },
+                    onConfigurePin = { viewModel.setShowPinSetupDialog(true) }
                 )
             }
 
@@ -303,6 +320,7 @@ fun DashboardScreen(
                     isPinSet = isPinSet,
                     config = pinConfig,
                     onConfigurePin = { viewModel.setShowPinSetupDialog(true) },
+                    onLockSession = { viewModel.lockSession() },
                     onUpdateConfig = { newConfig ->
                         viewModel.updatePinConfig(newConfig)
                     }
@@ -343,14 +361,17 @@ fun DashboardScreen(
                 )
             }
 
-            // CARD 9: SETTINGS & CAPABILITY REPORT
+            // CARD 9: SETTINGS & ARCHITECTURE
             item {
                 SettingsCard(
+                    themeMode = themeMode,
                     autoRestoreInternet = autoRestoreInternet,
                     autoRestoreVolume = autoRestoreVolume,
+                    onSelectTheme = { viewModel.setThemeMode(it) },
                     onToggleRestoreInternet = { viewModel.setAutoRestoreInternet(it) },
                     onToggleRestoreVolume = { viewModel.setAutoRestoreVolume(it) },
-                    onOpenCapabilityReport = { viewModel.setShowCapabilityDialog(true) }
+                    onOpenCapabilityReport = { viewModel.setShowCapabilityDialog(true) },
+                    onEmergencyRestore = { viewModel.emergencyRestoreAll(context) }
                 )
             }
         }
@@ -411,6 +432,7 @@ private fun HeaderSection(
 ) {
     val anyActive = isVpnActive || isVolumeLockActive || isCertainLockActive || isTimerActive
 
+    val extendedColors = LocalExtendedColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -426,21 +448,21 @@ private fun HeaderSection(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "CERTAIN AHMAD",
+                    text = "SULTAN BLOCK",
                     style = MaterialTheme.typography.headlineSmall.copy(
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.2.sp
                     ),
-                    color = SultanTextPrimary
+                    color = extendedColors.textPrimary
                 )
             }
             Text(
-                text = "NATIVE SYSTEM CONTROL",
+                text = "SYSTEM CONTROL & CERTAIN LOCK",
                 style = MaterialTheme.typography.labelSmall.copy(
                     letterSpacing = 1.5.sp,
                     fontWeight = FontWeight.Bold
                 ),
-                color = SultanTextSecondary
+                color = extendedColors.textSecondary
             )
         }
 
@@ -923,13 +945,19 @@ private fun CertainLockCard(
     lockedPackages: Set<String>,
     installedApps: List<InstalledAppItem>,
     redirectCount: Long,
+    isPinProtected: Boolean,
+    a11yGranted: Boolean,
+    usageAccessGranted: Boolean,
     onToggleMaster: () -> Unit,
     onOpenAddApps: () -> Unit,
     onRemoveApp: (String) -> Unit,
-    onOpenAccessibility: () -> Unit
+    onOpenAccessibility: () -> Unit,
+    onOpenUsageAccess: () -> Unit,
+    onConfigurePin: () -> Unit
 ) {
+    val extendedColors = LocalExtendedColors.current
     val borderColor by animateColorAsState(
-        targetValue = if (isLockActive) SultanRed else SultanCardBorder,
+        targetValue = if (isLockActive) extendedColors.accentBlue else extendedColors.border,
         label = "certainLockBorder"
     )
 
@@ -937,32 +965,83 @@ private fun CertainLockCard(
         title = "APP LOCK — CERTAIN LOCK",
         subtitle = "Returns restricted apps to Home Screen upon launch",
         icon = Icons.Default.Apps,
-        iconTint = if (isLockActive) SultanRed else SultanEmerald,
+        iconTint = if (isLockActive) extendedColors.accentBlue else SultanEmerald,
         borderColor = borderColor,
         trailingBadge = {
             StatusPill(
                 text = if (isLockActive) "ACTIVE" else "DISABLED",
-                color = if (isLockActive) SultanRed else SultanTextMuted
+                color = if (isLockActive) extendedColors.accentBlue else extendedColors.textMuted
             )
         }
     ) {
+        // Branding & Security Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(extendedColors.cardElevated)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (isLockActive) extendedColors.accentBlue else extendedColors.textMuted)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "CERTAIN LOCK™ ENGINE",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = extendedColors.textSecondary
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = if (isPinProtected) SultanEmerald else extendedColors.textMuted,
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = if (isPinProtected) "PIN PROTECTED" else "UNLOCKED",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isPinProtected) SultanEmerald else extendedColors.textMuted
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
         // Master switch
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .background(SultanDarkBg)
-                .border(1.dp, SultanCardBorder.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                .background(extendedColors.cardElevated)
+                .border(1.dp, extendedColors.border, RoundedCornerShape(12.dp))
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("MASTER CERTAIN LOCK", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SultanTextPrimary)
+                Text(
+                    text = "MASTER APP LOCK",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = extendedColors.textPrimary
+                )
                 Text(
                     text = if (isLockActive) "Actively redirecting restricted apps to Home Screen." else "App restrictions disarmed.",
                     fontSize = 11.sp,
-                    color = SultanTextSecondary
+                    color = extendedColors.textSecondary
                 )
             }
 
@@ -972,11 +1051,99 @@ private fun CertainLockCard(
                 modifier = Modifier.testTag("certain_lock_master_toggle"),
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
-                    checkedTrackColor = SultanRed,
-                    uncheckedThumbColor = SultanTextMuted,
-                    uncheckedTrackColor = SultanSurfaceElevated
+                    checkedTrackColor = extendedColors.accentBlue,
+                    uncheckedThumbColor = extendedColors.textMuted,
+                    uncheckedTrackColor = extendedColors.card
                 )
             )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Permissions Status Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Accessibility status chip
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(extendedColors.cardElevated)
+                    .border(
+                        1.dp,
+                        if (a11yGranted) SultanEmerald.copy(alpha = 0.5f) else SultanAmber.copy(alpha = 0.5f),
+                        RoundedCornerShape(8.dp)
+                    )
+                    .clickable { onOpenAccessibility() }
+                    .padding(8.dp)
+            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (a11yGranted) SultanEmerald else SultanAmber)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "ACCESSIBILITY",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = extendedColors.textMuted
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (a11yGranted) "Active (Instant)" else "Tap to Grant",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (a11yGranted) SultanEmerald else SultanAmber
+                    )
+                }
+            }
+
+            // Usage Access status chip
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(extendedColors.cardElevated)
+                    .border(
+                        1.dp,
+                        if (usageAccessGranted) SultanEmerald.copy(alpha = 0.5f) else extendedColors.border,
+                        RoundedCornerShape(8.dp)
+                    )
+                    .clickable { onOpenUsageAccess() }
+                    .padding(8.dp)
+            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (usageAccessGranted) SultanEmerald else extendedColors.textMuted)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "USAGE ACCESS",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = extendedColors.textMuted
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (usageAccessGranted) "Granted (Backup)" else "Tap to Grant",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (usageAccessGranted) SultanEmerald else extendedColors.textSecondary
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -988,23 +1155,22 @@ private fun CertainLockCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "${lockedPackages.size} RESTRICTED APPS",
+                text = "${lockedPackages.size} SELECTED APPLICATIONS",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = SultanTextMuted
+                color = extendedColors.textMuted
             )
 
             Button(
                 onClick = onOpenAddApps,
                 shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = SultanRed.copy(alpha = 0.2f)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, SultanRed),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = extendedColors.accentBlue),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 modifier = Modifier.testTag("add_apps_button")
             ) {
-                Icon(Icons.Default.Add, contentDescription = null, tint = SultanRed, modifier = Modifier.size(14.dp))
+                Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("ADD APPS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SultanRed)
+                Text("ADD APPS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }
         }
 
@@ -1012,7 +1178,11 @@ private fun CertainLockCard(
 
         // Flow of selected app chips
         if (lockedPackages.isEmpty()) {
-            Text("No applications selected. Tap '+ ADD APPS' to select Instagram, ChatGPT, BGMI, etc.", fontSize = 11.sp, color = SultanTextMuted)
+            Text(
+                text = "No applications selected. Tap '+ ADD APPS' to select Instagram, WhatsApp, ChatGPT, YouTube, BGMI, etc.",
+                fontSize = 11.sp,
+                color = extendedColors.textMuted
+            )
         } else {
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -1024,12 +1194,12 @@ private fun CertainLockCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(SultanDarkBg)
-                            .border(1.dp, SultanCardBorder, RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .background(extendedColors.cardElevated)
+                            .border(1.dp, extendedColors.border, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(appName, fontSize = 11.sp, color = SultanTextPrimary)
+                            Text(appName, fontSize = 11.sp, color = extendedColors.textPrimary)
                             Spacer(modifier = Modifier.width(6.dp))
                             Icon(
                                 imageVector = Icons.Default.Close,
@@ -1050,7 +1220,7 @@ private fun CertainLockCard(
         MetricTile(
             label = "REDIRECTED TO HOME",
             value = "$redirectCount times",
-            color = if (isLockActive) SultanRed else SultanTextSecondary,
+            color = if (isLockActive) extendedColors.accentBlue else extendedColors.textSecondary,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -1061,16 +1231,19 @@ private fun PinLockCard(
     isPinSet: Boolean,
     config: PinProtectionConfig,
     onConfigurePin: () -> Unit,
+    onLockSession: () -> Unit,
     onUpdateConfig: (PinProtectionConfig) -> Unit
 ) {
+    val extendedColors = LocalExtendedColors.current
+
     CyberCard(
         title = "PIN LOCK",
-        subtitle = "Salted cryptographic protection for settings & toggles",
+        subtitle = "6-digit cryptographic protection for settings & toggles",
         icon = Icons.Default.Lock,
         iconTint = if (isPinSet) SultanEmerald else SultanAmber,
         trailingBadge = {
             StatusPill(
-                text = if (isPinSet) "ARMED" else "NO PIN",
+                text = if (isPinSet) "ARMED (6-DIGIT)" else "NO PIN",
                 color = if (isPinSet) SultanEmerald else SultanAmber
             )
         }
@@ -1079,57 +1252,75 @@ private fun PinLockCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(SultanDarkBg)
+                .background(extendedColors.cardElevated)
                 .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (isPinSet) "PIN IS ACTIVE" else "NO PIN CONFIGURED",
+                    text = if (isPinSet) "6-DIGIT PIN ACTIVE" else "NO PIN CONFIGURED",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = SultanTextPrimary
+                    color = extendedColors.textPrimary
                 )
                 Text(
-                    text = if (isPinSet) "Protected sections require PIN to modify." else "Create a PIN to prevent unauthorized disarming.",
+                    text = if (isPinSet) "Protected sections require 6-digit PIN." else "Set up a 6-digit PIN to secure all protection toggles.",
                     fontSize = 10.sp,
-                    color = SultanTextMuted
+                    color = extendedColors.textMuted
                 )
             }
 
-            Button(
-                onClick = onConfigurePin,
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = SultanCyan.copy(alpha = 0.2f)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, SultanCyan),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                modifier = Modifier.testTag("configure_pin_button")
-            ) {
-                Text(if (isPinSet) "CHANGE PIN" else "CREATE PIN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SultanCyan)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (isPinSet) {
+                    Button(
+                        onClick = onLockSession,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = extendedColors.border),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text("LOCK", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = extendedColors.textPrimary)
+                    }
+                }
+
+                Button(
+                    onClick = onConfigurePin,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = extendedColors.accentBlue),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.testTag("configure_pin_button")
+                ) {
+                    Text(if (isPinSet) "CHANGE PIN" else "CREATE PIN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
             }
         }
 
         if (isPinSet) {
             Spacer(modifier = Modifier.height(10.dp))
-            Text("PROTECTED SECTIONS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SultanTextMuted)
+            Text("PROTECTED SECTIONS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = extendedColors.textMuted)
             Spacer(modifier = Modifier.height(6.dp))
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                PinToggleRow("Protect App Lock Settings", config.protectAppLockSettings) {
+                    onUpdateConfig(config.copy(protectAppLockSettings = it))
+                }
+                PinToggleRow("Protect Selected Apps List", config.protectSelectedApps) {
+                    onUpdateConfig(config.copy(protectSelectedApps = it))
+                }
                 PinToggleRow("Protect Internet Block Toggle", config.protectInternetBlock) {
                     onUpdateConfig(config.copy(protectInternetBlock = it))
                 }
                 PinToggleRow("Protect Volume Lock Toggle", config.protectVolumeLock) {
                     onUpdateConfig(config.copy(protectVolumeLock = it))
                 }
-                PinToggleRow("Protect Certain Lock Settings", config.protectCertainLock) {
-                    onUpdateConfig(config.copy(protectCertainLock = it))
+                PinToggleRow("Protect Timer Settings", config.protectTimer) {
+                    onUpdateConfig(config.copy(protectTimer = it))
                 }
                 PinToggleRow("Protect Schedule Settings", config.protectSchedule) {
                     onUpdateConfig(config.copy(protectSchedule = it))
                 }
-                PinToggleRow("Protect Timer Settings", config.protectTimer) {
-                    onUpdateConfig(config.copy(protectTimer = it))
+                PinToggleRow("Protect Security & Disarm", config.protectSecuritySettings) {
+                    onUpdateConfig(config.copy(protectSecuritySettings = it))
                 }
             }
         }
@@ -1138,6 +1329,7 @@ private fun PinLockCard(
 
 @Composable
 private fun PinToggleRow(label: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+    val extendedColors = LocalExtendedColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1145,15 +1337,15 @@ private fun PinToggleRow(label: String, checked: Boolean, onToggle: (Boolean) ->
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, fontSize = 11.sp, color = SultanTextSecondary)
+        Text(label, fontSize = 11.sp, color = extendedColors.textSecondary)
         Switch(
             checked = checked,
             onCheckedChange = onToggle,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
-                checkedTrackColor = SultanEmerald,
-                uncheckedThumbColor = SultanTextMuted,
-                uncheckedTrackColor = SultanSurfaceElevated
+                checkedTrackColor = extendedColors.accentBlue,
+                uncheckedThumbColor = extendedColors.textMuted,
+                uncheckedTrackColor = extendedColors.cardElevated
             )
         )
     }
@@ -1304,23 +1496,65 @@ private fun PermissionsCard(
 
 @Composable
 private fun SettingsCard(
+    themeMode: AppThemeMode,
     autoRestoreInternet: Boolean,
     autoRestoreVolume: Boolean,
+    onSelectTheme: (AppThemeMode) -> Unit,
     onToggleRestoreInternet: (Boolean) -> Unit,
     onToggleRestoreVolume: (Boolean) -> Unit,
-    onOpenCapabilityReport: () -> Unit
+    onOpenCapabilityReport: () -> Unit,
+    onEmergencyRestore: () -> Unit
 ) {
+    val extendedColors = LocalExtendedColors.current
+
     CyberCard(
         title = "SETTINGS & ARCHITECTURE",
-        subtitle = "Persistence preferences & platform report",
+        subtitle = "Theme, persistence preferences & platform report",
         icon = Icons.Default.Settings,
-        iconTint = SultanTextSecondary
+        iconTint = extendedColors.textSecondary
     ) {
+        // Theme Selector Section
+        Text("APP THEME", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = extendedColors.textMuted)
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AppThemeMode.entries.forEach { mode ->
+                val isSelected = themeMode == mode
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSelected) extendedColors.accentBlue else extendedColors.cardElevated)
+                        .border(
+                            1.dp,
+                            if (isSelected) extendedColors.accentBlue else extendedColors.border,
+                            RoundedCornerShape(8.dp)
+                        )
+                        .clickable { onSelectTheme(mode) }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = mode.title,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isSelected) Color.White else extendedColors.textPrimary
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Persistence preferences
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .background(SultanDarkBg)
+                .background(extendedColors.cardElevated)
                 .padding(12.dp)
         ) {
             Row(
@@ -1329,17 +1563,17 @@ private fun SettingsCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Auto-Restore Internet Block on Boot", fontSize = 12.sp, color = SultanTextPrimary)
-                    Text("Re-arms blackhole sinkhole upon system startup", fontSize = 10.sp, color = SultanTextMuted)
+                    Text("Auto-Restore Internet Block on Boot", fontSize = 12.sp, color = extendedColors.textPrimary)
+                    Text("Re-arms blackhole sinkhole upon system startup", fontSize = 10.sp, color = extendedColors.textMuted)
                 }
                 Switch(
                     checked = autoRestoreInternet,
                     onCheckedChange = onToggleRestoreInternet,
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
-                        checkedTrackColor = SultanRed,
-                        uncheckedThumbColor = SultanTextMuted,
-                        uncheckedTrackColor = SultanSurfaceElevated
+                        checkedTrackColor = extendedColors.accentBlue,
+                        uncheckedThumbColor = extendedColors.textMuted,
+                        uncheckedTrackColor = extendedColors.card
                     )
                 )
             }
@@ -1352,17 +1586,17 @@ private fun SettingsCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Auto-Restore Volume Lock on Boot", fontSize = 12.sp, color = SultanTextPrimary)
-                    Text("Re-engages audio mute clamp after reboot", fontSize = 10.sp, color = SultanTextMuted)
+                    Text("Auto-Restore Volume Lock on Boot", fontSize = 12.sp, color = extendedColors.textPrimary)
+                    Text("Re-engages audio mute clamp after reboot", fontSize = 10.sp, color = extendedColors.textMuted)
                 }
                 Switch(
                     checked = autoRestoreVolume,
                     onCheckedChange = onToggleRestoreVolume,
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
-                        checkedTrackColor = SultanRed,
-                        uncheckedThumbColor = SultanTextMuted,
-                        uncheckedTrackColor = SultanSurfaceElevated
+                        checkedTrackColor = extendedColors.accentBlue,
+                        uncheckedThumbColor = extendedColors.textMuted,
+                        uncheckedTrackColor = extendedColors.card
                     )
                 )
             }
@@ -1376,12 +1610,28 @@ private fun SettingsCard(
                 .fillMaxWidth()
                 .testTag("open_capability_report_button"),
             shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = SultanCyan.copy(alpha = 0.15f)),
-            border = androidx.compose.foundation.BorderStroke(1.dp, SultanCyan)
+            colors = ButtonDefaults.buttonColors(containerColor = extendedColors.cardElevated),
+            border = androidx.compose.foundation.BorderStroke(1.dp, extendedColors.border)
         ) {
-            Icon(Icons.Default.Info, contentDescription = null, tint = SultanCyan, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.Info, contentDescription = null, tint = extendedColors.accentBlue, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("VIEW TECHNICAL CAPABILITY REPORT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SultanCyan)
+            Text("VIEW TECHNICAL CAPABILITY REPORT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = extendedColors.textPrimary)
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(
+            onClick = onEmergencyRestore,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("emergency_disarm_all_button"),
+            shape = RoundedCornerShape(10.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = SultanRed.copy(alpha = 0.15f)),
+            border = androidx.compose.foundation.BorderStroke(1.dp, SultanRed)
+        ) {
+            Icon(Icons.Default.Close, contentDescription = null, tint = SultanRed, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("EMERGENCY DISARM ALL PROTECTIONS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SultanRed)
         }
     }
 }
@@ -1393,14 +1643,15 @@ private fun MetricTile(
     color: Color,
     modifier: Modifier = Modifier
 ) {
+    val extendedColors = LocalExtendedColors.current
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
-            .background(SultanDarkBg)
-            .border(1.dp, SultanCardBorder.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+            .background(extendedColors.cardElevated)
+            .border(1.dp, extendedColors.border, RoundedCornerShape(10.dp))
             .padding(10.dp)
     ) {
-        Text(text = label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = SultanTextMuted)
+        Text(text = label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = extendedColors.textMuted)
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = value,

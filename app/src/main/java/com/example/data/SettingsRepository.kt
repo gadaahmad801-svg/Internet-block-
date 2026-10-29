@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.pin.PinProtectionConfig
+import com.example.ui.theme.AppThemeMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -17,6 +18,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class SettingsRepository(private val context: Context) {
 
     companion object {
+        val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+
         val KEY_RESTORE_INTERNET_BOOT = booleanPreferencesKey("restore_internet_boot")
         val KEY_RESTORE_VOLUME_BOOT = booleanPreferencesKey("restore_volume_boot")
         val KEY_LOCK_MEDIA_ONLY = booleanPreferencesKey("lock_media_only")
@@ -33,12 +36,22 @@ class SettingsRepository(private val context: Context) {
         val KEY_RECOVERY_HASH = stringPreferencesKey("recovery_hash")
         val KEY_RECOVERY_SALT = stringPreferencesKey("recovery_salt")
 
-        val KEY_PROTECT_SETTINGS = booleanPreferencesKey("protect_settings")
+        val KEY_PROTECT_APP_LOCK_SETTINGS = booleanPreferencesKey("protect_app_lock_settings")
+        val KEY_PROTECT_SELECTED_APPS = booleanPreferencesKey("protect_selected_apps")
         val KEY_PROTECT_INTERNET = booleanPreferencesKey("protect_internet")
         val KEY_PROTECT_VOLUME = booleanPreferencesKey("protect_volume")
-        val KEY_PROTECT_SCHEDULE = booleanPreferencesKey("protect_schedule")
         val KEY_PROTECT_TIMER = booleanPreferencesKey("protect_timer")
-        val KEY_PROTECT_CERTAIN_LOCK = booleanPreferencesKey("protect_certain_lock")
+        val KEY_PROTECT_SCHEDULE = booleanPreferencesKey("protect_schedule")
+        val KEY_PROTECT_SECURITY_SETTINGS = booleanPreferencesKey("protect_security_settings")
+    }
+
+    val themeMode: Flow<AppThemeMode> = context.dataStore.data.map { preferences ->
+        val raw = preferences[KEY_THEME_MODE]
+        try {
+            if (raw != null) AppThemeMode.valueOf(raw) else AppThemeMode.SYSTEM
+        } catch (e: Exception) {
+            AppThemeMode.SYSTEM
+        }
     }
 
     val autoRestoreInternetOnBoot: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -89,12 +102,19 @@ class SettingsRepository(private val context: Context) {
         preferences[KEY_RECOVERY_SALT]
     }
 
-    val protectSettings: Flow<Boolean> = context.dataStore.data.map { it[KEY_PROTECT_SETTINGS] ?: true }
+    val protectAppLockSettings: Flow<Boolean> = context.dataStore.data.map { it[KEY_PROTECT_APP_LOCK_SETTINGS] ?: true }
+    val protectSelectedApps: Flow<Boolean> = context.dataStore.data.map { it[KEY_PROTECT_SELECTED_APPS] ?: true }
     val protectInternetBlock: Flow<Boolean> = context.dataStore.data.map { it[KEY_PROTECT_INTERNET] ?: false }
     val protectVolumeLock: Flow<Boolean> = context.dataStore.data.map { it[KEY_PROTECT_VOLUME] ?: false }
-    val protectSchedule: Flow<Boolean> = context.dataStore.data.map { it[KEY_PROTECT_SCHEDULE] ?: false }
     val protectTimer: Flow<Boolean> = context.dataStore.data.map { it[KEY_PROTECT_TIMER] ?: false }
-    val protectCertainLock: Flow<Boolean> = context.dataStore.data.map { it[KEY_PROTECT_CERTAIN_LOCK] ?: false }
+    val protectSchedule: Flow<Boolean> = context.dataStore.data.map { it[KEY_PROTECT_SCHEDULE] ?: false }
+    val protectSecuritySettings: Flow<Boolean> = context.dataStore.data.map { it[KEY_PROTECT_SECURITY_SETTINGS] ?: true }
+
+    suspend fun saveThemeMode(mode: AppThemeMode) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_THEME_MODE] = mode.name
+        }
+    }
 
     suspend fun setRestoreInternetOnBoot(enabled: Boolean) {
         context.dataStore.edit { preferences ->
@@ -164,12 +184,13 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun savePinConfig(config: PinProtectionConfig) {
         context.dataStore.edit { preferences ->
-            preferences[KEY_PROTECT_SETTINGS] = config.protectSettings
+            preferences[KEY_PROTECT_APP_LOCK_SETTINGS] = config.protectAppLockSettings
+            preferences[KEY_PROTECT_SELECTED_APPS] = config.protectSelectedApps
             preferences[KEY_PROTECT_INTERNET] = config.protectInternetBlock
             preferences[KEY_PROTECT_VOLUME] = config.protectVolumeLock
-            preferences[KEY_PROTECT_SCHEDULE] = config.protectSchedule
             preferences[KEY_PROTECT_TIMER] = config.protectTimer
-            preferences[KEY_PROTECT_CERTAIN_LOCK] = config.protectCertainLock
+            preferences[KEY_PROTECT_SCHEDULE] = config.protectSchedule
+            preferences[KEY_PROTECT_SECURITY_SETTINGS] = config.protectSecuritySettings
         }
     }
 }

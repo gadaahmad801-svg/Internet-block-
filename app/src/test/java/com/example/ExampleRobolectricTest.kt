@@ -5,8 +5,12 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.audio.VolumeStateManager
 import com.example.certainlock.CertainLockManager
 import com.example.data.ProtectionPreferencesRepository
+import com.example.data.SettingsRepository
+import com.example.pin.PinManager
+import com.example.pin.PinProtectionConfig
 import com.example.schedule.ScheduleItem
 import com.example.timer.TimerState
+import com.example.ui.theme.AppThemeMode
 import com.example.vpn.VpnStateManager
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -27,7 +31,7 @@ class ExampleRobolectricTest {
     fun readStringFromContext() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val appName = context.getString(R.string.app_name)
-        assertEquals("Certain Ahmad", appName)
+        assertEquals("SULTAN BLOCK", appName)
     }
 
     @Test
@@ -145,5 +149,69 @@ class ExampleRobolectricTest {
         assertFalse(clearedStates.isInternetBlockEnabled)
         assertFalse(clearedStates.isVolumeLockEnabled)
         assertFalse(clearedStates.isAppLockEnabled)
+    }
+
+    @Test
+    fun testSixDigitPinManager() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val settingsRepo = SettingsRepository(context)
+        val pinManager = PinManager(settingsRepo)
+
+        // Invalid lengths should fail
+        assertFalse(pinManager.setPin("123", "secret"))
+        assertFalse(pinManager.setPin("12345", "secret"))
+        assertFalse(pinManager.setPin("1234567", "secret"))
+        assertFalse(pinManager.setPin("abcdef", "secret"))
+
+        // Exactly 6 numeric digits should succeed
+        assertTrue(pinManager.setPin("849201", "Blueberry"))
+        assertTrue(pinManager.isPinSet.value)
+
+        // Verifications
+        assertTrue(pinManager.verifyPin("849201"))
+        assertFalse(pinManager.verifyPin("111111"))
+        assertFalse(pinManager.verifyPin("849200"))
+
+        // Recovery verification
+        assertTrue(pinManager.verifyRecoveryAnswer("blueberry"))
+        assertTrue(pinManager.verifyRecoveryAnswer(" BLUEBERRY "))
+        assertFalse(pinManager.verifyRecoveryAnswer("strawberry"))
+
+        // Reset
+        pinManager.resetPin()
+        assertFalse(pinManager.isPinSet.value)
+    }
+
+    @Test
+    fun testThemeModeAndPinConfigPersistence() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val settingsRepo = SettingsRepository(context)
+
+        // Test theme mode
+        settingsRepo.saveThemeMode(AppThemeMode.DARK)
+        assertEquals(AppThemeMode.DARK, settingsRepo.themeMode.first())
+
+        settingsRepo.saveThemeMode(AppThemeMode.LIGHT)
+        assertEquals(AppThemeMode.LIGHT, settingsRepo.themeMode.first())
+
+        // Test granular pin protection config
+        val customConfig = PinProtectionConfig(
+            protectAppLockSettings = true,
+            protectSelectedApps = true,
+            protectInternetBlock = true,
+            protectVolumeLock = true,
+            protectTimer = true,
+            protectSchedule = true,
+            protectSecuritySettings = true
+        )
+        settingsRepo.savePinConfig(customConfig)
+
+        assertTrue(settingsRepo.protectAppLockSettings.first())
+        assertTrue(settingsRepo.protectSelectedApps.first())
+        assertTrue(settingsRepo.protectInternetBlock.first())
+        assertTrue(settingsRepo.protectVolumeLock.first())
+        assertTrue(settingsRepo.protectTimer.first())
+        assertTrue(settingsRepo.protectSchedule.first())
+        assertTrue(settingsRepo.protectSecuritySettings.first())
     }
 }

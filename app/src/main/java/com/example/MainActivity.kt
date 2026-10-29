@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -50,10 +52,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            SultanBlockTheme {
-                Surface(
+            val themeMode by viewModel.themeMode.collectAsState()
+            SultanBlockTheme(themeMode = themeMode) {
+                androidx.compose.material3.Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = SultanDarkBg
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.background
                 ) {
                     DashboardScreen(viewModel = viewModel)
                 }

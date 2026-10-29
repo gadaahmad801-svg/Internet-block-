@@ -49,10 +49,11 @@ data class PermissionItem(
 enum class ProtectedSection {
     INTERNET_BLOCK,
     VOLUME_LOCK,
-    CERTAIN_LOCK,
+    APP_LOCK_SETTINGS,
+    APP_LOCK_SELECTION,
     SCHEDULE,
     TIMER,
-    SETTINGS
+    SECURITY_SETTINGS
 }
 
 data class PinChallenge(
@@ -68,6 +69,10 @@ class MainViewModel(
     val timerManager: TimerManager,
     val pinManager: PinManager
 ) : ViewModel() {
+
+    // Theme Mode
+    val themeMode: StateFlow<com.example.ui.theme.AppThemeMode> = settingsRepository.themeMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.example.ui.theme.AppThemeMode.SYSTEM)
 
     // Feature 1: Internet Block
     val isVpnActive: StateFlow<Boolean> = VpnStateManager.isVpnActive
@@ -183,13 +188,14 @@ class MainViewModel(
         val requiresPin = isPinActive && when (section) {
             ProtectedSection.INTERNET_BLOCK -> config.protectInternetBlock
             ProtectedSection.VOLUME_LOCK -> config.protectVolumeLock
-            ProtectedSection.CERTAIN_LOCK -> config.protectCertainLock
+            ProtectedSection.APP_LOCK_SETTINGS -> config.protectAppLockSettings
+            ProtectedSection.APP_LOCK_SELECTION -> config.protectSelectedApps
             ProtectedSection.SCHEDULE -> config.protectSchedule
             ProtectedSection.TIMER -> config.protectTimer
-            ProtectedSection.SETTINGS -> config.protectSettings
+            ProtectedSection.SECURITY_SETTINGS -> config.protectSecuritySettings
         }
 
-        if (requiresPin) {
+        if (requiresPin && !pinManager.isSessionAuthenticated()) {
             _activePinChallenge.value = PinChallenge(section, action)
         } else {
             action()
@@ -201,6 +207,17 @@ class MainViewModel(
         _activePinChallenge.value = null
         if (success && challenge != null) {
             challenge.onAuthenticated()
+        }
+    }
+
+    fun lockSession() {
+        pinManager.setSessionAuthenticated(false)
+        setFeedback("Session locked. PIN authentication required.")
+    }
+
+    fun setThemeMode(mode: com.example.ui.theme.AppThemeMode) {
+        viewModelScope.launch {
+            settingsRepository.saveThemeMode(mode)
         }
     }
 
@@ -361,7 +378,7 @@ class MainViewModel(
     }
 
     fun toggleCertainLock(context: Context) {
-        performProtectedAction(ProtectedSection.CERTAIN_LOCK) {
+        performProtectedAction(ProtectedSection.APP_LOCK_SETTINGS) {
             val active = isCertainLockActive.value
             val newActive = !active
             CertainLockManager.updateActiveState(newActive)
@@ -394,18 +411,22 @@ class MainViewModel(
     }
 
     fun toggleAppLocked(packageName: String) {
-        val updated = CertainLockManager.toggleAppLocked(packageName)
-        viewModelScope.launch {
-            settingsRepository.saveLockedPackages(updated)
-            protectionPreferencesRepository.setLockedAppPackages(updated)
+        performProtectedAction(ProtectedSection.APP_LOCK_SELECTION) {
+            val updated = CertainLockManager.toggleAppLocked(packageName)
+            viewModelScope.launch {
+                settingsRepository.saveLockedPackages(updated)
+                protectionPreferencesRepository.setLockedAppPackages(updated)
+            }
         }
     }
 
     fun removeLockedApp(packageName: String) {
-        val updated = CertainLockManager.removeLockedApp(packageName)
-        viewModelScope.launch {
-            settingsRepository.saveLockedPackages(updated)
-            protectionPreferencesRepository.setLockedAppPackages(updated)
+        performProtectedAction(ProtectedSection.APP_LOCK_SELECTION) {
+            val updated = CertainLockManager.removeLockedApp(packageName)
+            viewModelScope.launch {
+                settingsRepository.saveLockedPackages(updated)
+                protectionPreferencesRepository.setLockedAppPackages(updated)
+            }
         }
     }
 
@@ -487,7 +508,7 @@ class MainViewModel(
     }
 
     fun emergencyRestoreAll(context: Context) {
-        performProtectedAction(ProtectedSection.SETTINGS) {
+        performProtectedAction(ProtectedSection.SECURITY_SETTINGS) {
             stopInternetBlock(context)
             val volIntent = Intent(context, VolumeLockService::class.java).apply {
                 action = VolumeLockService.ACTION_STOP
@@ -555,7 +576,7 @@ class MainViewModel(
     }
 
     fun updatePinConfig(newConfig: PinProtectionConfig) {
-        performProtectedAction(ProtectedSection.SETTINGS) {
+        performProtectedAction(ProtectedSection.SECURITY_SETTINGS) {
             viewModelScope.launch {
                 pinManager.updateConfig(newConfig)
                 setFeedback("PIN protection settings updated.")
